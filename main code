@@ -1,0 +1,139 @@
+
+
+#installing python-docx
+
+!pip install python-docx
+
+# Enhanced EDA Pipeline with DOCX Report Generation for Google Colab
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import scipy.stats as stats
+from google.colab import files
+import os
+from docx import Document
+from docx.shared import Inches
+
+# For inline plotting in Colab
+%matplotlib inline
+
+# Upload dataset from your device
+print("Please upload your dataset file (CSV format recommended):")
+uploaded = files.upload()
+filename = list(uploaded.keys())[0]
+df = pd.read_csv(filename)
+
+# Create a new Word document for the report
+document = Document()
+document.add_heading('Detailed EDA Report', level=0)
+document.add_paragraph("This report is generated automatically from the exploratory data analysis of the dataset. "
+                         "It includes textual summaries, tables, and visualizations.")
+
+# Add dataset summary
+document.add_heading('Dataset Summary', level=1)
+document.add_paragraph(f"Number of rows: {df.shape[0]}")
+document.add_paragraph(f"Number of columns: {df.shape[1]}")
+
+
+# Create a table of columns and their data types
+document.add_heading('Column Data Types', level=2)
+table = document.add_table(rows=1, cols=2)
+hdr_cells = table.rows[0].cells
+hdr_cells[0].text = 'Column Name'
+hdr_cells[1].text = 'Data Type'
+for col in df.columns:
+    row_cells = table.add_row().cells
+    row_cells[0].text = str(col)
+    row_cells[1].text = str(df[col].dtype)
+document.add_paragraph(" ")
+
+# Generate and add missing values heatmap
+plt.figure(figsize=(10,4))
+sns.heatmap(df.isnull(), cbar=False, cmap='viridis')
+plt.title("Missing Values Heatmap")
+heatmap_filename = "missing_values_heatmap.png"
+plt.savefig(heatmap_filename)
+plt.close()
+
+document.add_heading('Missing Values Analysis', level=1)
+document.add_paragraph("The following heatmap shows the missing values in the dataset.")
+document.add_picture(heatmap_filename, width=Inches(6))
+os.remove(heatmap_filename)
+
+# Check and add duplicate rows info
+dup_count = df.duplicated().sum()
+document.add_heading('Duplicate Rows', level=1)
+document.add_paragraph(f"Total number of duplicate rows in the dataset: {dup_count}")
+
+# Detailed column-wise analysis
+document.add_heading('Column-wise Analysis', level=1)
+for col in df.columns:
+    document.add_heading(f"Column: {col}", level=2)
+    document.add_paragraph(f"Data Type: {df[col].dtype}")
+    document.add_paragraph(f"Number of non-null observations: {df[col].count()}")
+    document.add_paragraph(f"Missing values: {df[col].isnull().sum()}")
+    
+    if np.issubdtype(df[col].dtype, np.number):
+        # For numeric columns: add descriptive statistics
+        stats_text = df[col].describe().to_string()
+        document.add_paragraph("Numeric Statistics:")
+        document.add_paragraph(stats_text)
+        document.add_paragraph(f"Highest Value: {df[col].max()}")
+        document.add_paragraph(f"Lowest Value: {df[col].min()}")
+        
+        # Create and save histogram with KDE
+        plt.figure(figsize=(8,4))
+        sns.histplot(df[col].dropna(), bins=30, kde=True)
+        plt.title(f'Histogram and Density of {col}')
+        hist_filename = f"{col}_hist.png"
+        plt.savefig(hist_filename)
+        plt.close()
+        document.add_picture(hist_filename, width=Inches(6))
+        os.remove(hist_filename)
+        
+        # Create and save Q-Q plot
+        plt.figure(figsize=(6,6))
+        stats.probplot(df[col].dropna(), dist="norm", plot=plt)
+        plt.title(f'Q-Q Plot of {col}')
+        qq_filename = f"{col}_qq.png"
+        plt.savefig(qq_filename)
+        plt.close()
+        document.add_picture(qq_filename, width=Inches(4))
+        os.remove(qq_filename)
+    else:
+        # For non-numeric columns: add frequency table text and bar plot
+        freq_table = df[col].value_counts().to_string()
+        document.add_paragraph("Categorical Frequency Table:")
+        document.add_paragraph(freq_table)
+        
+        # Create and save bar plot
+        plt.figure(figsize=(8,4))
+        sns.countplot(y=df[col], order=df[col].value_counts().index)
+        plt.title(f'Bar Plot of {col}')
+        bar_filename = f"{col}_bar.png"
+        plt.savefig(bar_filename)
+        plt.close()
+        document.add_picture(bar_filename, width=Inches(6))
+        os.remove(bar_filename)
+
+# Add correlation heatmap if multiple numeric columns exist
+numeric_cols = df.select_dtypes(include=[np.number]).columns
+if len(numeric_cols) > 1:
+    plt.figure(figsize=(10,8))
+    corr = df[numeric_cols].corr()
+    sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f")
+    plt.title("Correlation Heatmap")
+    corr_filename = "correlation_heatmap.png"
+    plt.savefig(corr_filename)
+    plt.close()
+    document.add_heading('Correlation Analysis', level=1)
+    document.add_paragraph("The following heatmap shows the correlation among numeric variables.")
+    document.add_picture(corr_filename, width=Inches(6))
+    os.remove(corr_filename)
+
+# Save the final DOCX report
+report_filename = "EDA_Report.docx"
+document.save(report_filename)
+print(f"Report saved as {report_filename}")
